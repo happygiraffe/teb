@@ -83,10 +83,10 @@ func TestCompressionCorrectness(t *testing.T) {
 			t.Errorf("expected compressed bit %d to be true", idx)
 		}
 	}
-	if !bm.Get(65536+100) {
+	if !bm.Get(65536 + 100) {
 		t.Error("expected compressed bit 65636 to be true")
 	}
-	if !bm.Get(65536+500) {
+	if !bm.Get(65536 + 500) {
 		t.Error("expected compressed bit 66036 to be true")
 	}
 
@@ -111,7 +111,7 @@ func TestEmptyAndFullBlock(t *testing.T) {
 	bm1 := NewBitmap()
 	bm1.Set(10, true)
 	bm1.Set(10, false) // set back to false, so block 0 is empty but active
-	
+
 	comp1 := bm1.Compress()
 	if comp1 != 0 {
 		t.Errorf("expected 0 blocks compressed for empty block, got %d", comp1)
@@ -122,17 +122,17 @@ func TestEmptyAndFullBlock(t *testing.T) {
 
 	// 2. Entirely full block compression (65,536 bits all set to 1)
 	bm2 := NewBitmap()
-	for i := uint64(0); i < 65536; i++ {
+	for i := range uint64(65536) {
 		bm2.Set(i, true)
 	}
-	
+
 	comp2 := bm2.Compress()
 	if comp2 != 1 {
 		t.Errorf("expected 1 block compressed, got %d", comp2)
 	}
-	
+
 	// Validate full block has all bits true
-	for i := uint64(0); i < 65536; i++ {
+	for i := range uint64(65536) {
 		if !bm2.Get(i) {
 			t.Fatalf("expected bit %d to be true in fully compressed block", i)
 		}
@@ -145,7 +145,7 @@ func TestRandomSparseClusteredCorrectness(t *testing.T) {
 	expected := make(map[uint64]bool)
 
 	// Generate sparse random bits across blocks 0, 1, and 2
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		idx := uint64(rng.Intn(65536 * 3))
 		bm.Set(idx, true)
 		expected[idx] = true
@@ -154,7 +154,7 @@ func TestRandomSparseClusteredCorrectness(t *testing.T) {
 	// Generate a clustered run
 	start := uint64(45000)
 	runLen := uint64(3000)
-	for i := uint64(0); i < runLen; i++ {
+	for i := range runLen {
 		bm.Set(start+i, true)
 		expected[start+i] = true
 	}
@@ -163,7 +163,7 @@ func TestRandomSparseClusteredCorrectness(t *testing.T) {
 	bm.Compress()
 
 	// Verify all indices
-	for idx := uint64(0); idx < 65536*3; idx++ {
+	for idx := range uint64(65536 * 3) {
 		actual := bm.Get(idx)
 		exp := expected[idx]
 		if actual != exp {
@@ -188,11 +188,11 @@ func BenchmarkGetMutable(b *testing.B) {
 	bm := NewBitmap()
 	// Set 5% density
 	rng := rand.New(rand.NewSource(42))
-	for i := 0; i < 50000; i++ {
+	for range 50000 {
 		idx := uint64(rng.Intn(1000000))
 		bm.Set(idx, true)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		idx := uint64(rng.Intn(1000000))
@@ -203,14 +203,14 @@ func BenchmarkGetMutable(b *testing.B) {
 func BenchmarkGetSuccinct(b *testing.B) {
 	bm := NewBitmap()
 	rng := rand.New(rand.NewSource(42))
-	for i := 0; i < 50000; i++ {
+	for range 50000 {
 		idx := uint64(rng.Intn(1000000))
 		bm.Set(idx, true)
 	}
-	
+
 	// Compress to succinct
 	bm.Compress()
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		idx := uint64(rng.Intn(1000000))
@@ -223,11 +223,11 @@ func BenchmarkCompressBlock(b *testing.B) {
 	mutable := make([]uint64, 1024)
 	rng := rand.New(rand.NewSource(42))
 	// Set some bits
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		offset := rng.Intn(65536)
 		mutable[offset/64] |= (uint64(1) << (offset % 64))
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = NewSuccinctBlock(mutable)

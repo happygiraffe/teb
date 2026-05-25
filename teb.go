@@ -148,7 +148,6 @@ func (b *Bitmap) AllReverse() iter.Seq[uint64] {
 	}
 }
 
-
 // Block represents a single 65,536-bit partition.
 // It maintains a hybrid state: either uncompressed mutable (for fast transactional updates)
 // or compressed succinct (for compact storage and fast read lookups).
@@ -257,7 +256,7 @@ func (block *Block) yieldSetBits(blockIdx uint32, yield func(uint64) bool) bool 
 		visit = func(i uint32, begin uint64, length uint64) bool {
 			if !block.succinct.isInnerNode(i) {
 				if block.succinct.label(i) {
-					for k := uint64(0); k < length; k++ {
+					for k := range length {
 						globalIdx := uint64(blockIdx)*65536 + begin + k
 						if !yield(globalIdx) {
 							return false
@@ -332,7 +331,6 @@ func (block *Block) yieldSetBitsBackward(blockIdx uint32, yield func(uint64) boo
 	return true
 }
 
-
 // SuccinctBlock represents the static, succinct level-order binary tree-encoded bitmap.
 type SuccinctBlock struct {
 	t       []uint64 // Tree structure bit vector (1 for inner node, 0 for leaf)
@@ -355,7 +353,7 @@ func NewSuccinctBlock(bitmap []uint64) *SuccinctBlock {
 	tree := make([]buildNode, 131071)
 
 	// 1. Initialize leaf nodes at Level 16 (indices 65535 to 131070)
-	for k := 0; k < 65536; k++ {
+	for k := range 65536 {
 		word := k / 64
 		bit := k % 64
 		val := (bitmap[word] & (uint64(1) << uint(bit))) != 0
@@ -430,10 +428,10 @@ func NewSuccinctBlock(bitmap []uint64) *SuccinctBlock {
 	numBlocks := (tCount + 511) / 512
 	rankLUT := make([]uint32, numBlocks)
 	currentRank := uint32(0)
-	for b := uint32(0); b < numBlocks; b++ {
+	for b := range numBlocks {
 		rankLUT[b] = currentRank
 		wordStart := b * 8
-		for w := uint32(0); w < 8; w++ {
+		for w := range uint32(8) {
 			idx := wordStart + w
 			if idx < uint32(len(tBits)) {
 				currentRank += uint32(bits.OnesCount64(tBits[idx]))
@@ -472,7 +470,7 @@ func (sb *SuccinctBlock) Rank(i uint32) uint32 {
 	wordStart := block * 8
 
 	fullWords := bitCount / 64
-	for w := uint32(0); w < fullWords; w++ {
+	for w := range fullWords {
 		r += uint32(bits.OnesCount64(sb.t[wordStart+w]))
 	}
 
@@ -516,7 +514,7 @@ func (sb *SuccinctBlock) DecompressTo(bitmap []uint64) {
 		if !sb.isInnerNode(i) {
 			if sb.label(i) {
 				// Set the range [begin, begin + length) in the bitmap to 1
-				for k := uint32(0); k < length; k++ {
+				for k := range length {
 					idx := begin + k
 					bitmap[idx/64] |= (uint64(1) << (idx % 64))
 				}
