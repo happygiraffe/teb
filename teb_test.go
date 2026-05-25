@@ -1,7 +1,7 @@
 package teb
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"testing"
 )
 
@@ -140,13 +140,12 @@ func TestEmptyAndFullBlock(t *testing.T) {
 }
 
 func TestRandomSparseClusteredCorrectness(t *testing.T) {
-	rng := rand.New(rand.NewSource(42))
 	bm := NewBitmap()
 	expected := make(map[uint64]bool)
 
 	// Generate sparse random bits across blocks 0, 1, and 2
 	for range 500 {
-		idx := uint64(rng.Intn(65536 * 3))
+		idx := rand.N[uint64](1000000)
 		bm.Set(idx, true)
 		expected[idx] = true
 	}
@@ -176,10 +175,8 @@ func TestRandomSparseClusteredCorrectness(t *testing.T) {
 
 func BenchmarkSet(b *testing.B) {
 	bm := NewBitmap()
-	rng := rand.New(rand.NewSource(42))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		idx := uint64(rng.Intn(1000000))
+	for b.Loop() {
+		idx := rand.N[uint64](1000000)
 		bm.Set(idx, true)
 	}
 }
@@ -187,49 +184,43 @@ func BenchmarkSet(b *testing.B) {
 func BenchmarkGetMutable(b *testing.B) {
 	bm := NewBitmap()
 	// Set 5% density
-	rng := rand.New(rand.NewSource(42))
 	for range 50000 {
-		idx := uint64(rng.Intn(1000000))
+		idx := rand.N[uint64](1000000)
 		bm.Set(idx, true)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		idx := uint64(rng.Intn(1000000))
-		_ = bm.Get(idx)
+	for b.Loop() {
+		idx := rand.N[uint64](1000000)
+		bm.Get(idx)
 	}
 }
 
 func BenchmarkGetSuccinct(b *testing.B) {
 	bm := NewBitmap()
-	rng := rand.New(rand.NewSource(42))
 	for range 50000 {
-		idx := uint64(rng.Intn(1000000))
+		idx := rand.N[uint64](1000000)
 		bm.Set(idx, true)
 	}
 
 	// Compress to succinct
 	bm.Compress()
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		idx := uint64(rng.Intn(1000000))
-		_ = bm.Get(idx)
+	for b.Loop() {
+		idx := rand.N[uint64](1000000)
+		bm.Get(idx)
 	}
 }
 
 func BenchmarkCompressBlock(b *testing.B) {
 	// Prepare a single 64KB block with sparse and clustered bits
 	mutable := make([]uint64, 1024)
-	rng := rand.New(rand.NewSource(42))
 	// Set some bits
 	for range 1000 {
-		offset := rng.Intn(65536)
+		offset := rand.N[int](65536)
 		mutable[offset/64] |= (uint64(1) << (offset % 64))
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		_ = NewSuccinctBlock(mutable)
+	for b.Loop() {
+		NewSuccinctBlock(mutable)
 	}
 }
