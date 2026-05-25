@@ -1,7 +1,9 @@
 package teb
 
 import (
+	"iter"
 	"math/bits"
+	"slices"
 	"sync"
 )
 
@@ -102,6 +104,51 @@ func (b *Bitmap) BlockCount() int {
 	return len(b.blocks)
 }
 
+// All returns an iterator sequence (iter.Seq) yielding the indices of all set (1) bits
+// in ascending order.
+func (b *Bitmap) All() iter.Seq[uint64] {
+	return func(yield func(uint64) bool) {
+		b.mu.RLock()
+		defer b.mu.RUnlock()
+
+		keys := make([]uint32, 0, len(b.blocks))
+		for k := range b.blocks {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+
+		for _, k := range keys {
+			block := b.blocks[k]
+			if !block.yieldSetBits(k, yield) {
+				return
+			}
+		}
+	}
+}
+
+// AllReverse returns an iterator sequence (iter.Seq) yielding the indices of all set (1) bits
+// in descending order (highest index first).
+func (b *Bitmap) AllReverse() iter.Seq[uint64] {
+	return func(yield func(uint64) bool) {
+		b.mu.RLock()
+		defer b.mu.RUnlock()
+
+		keys := make([]uint32, 0, len(b.blocks))
+		for k := range b.blocks {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+
+		for i := len(keys) - 1; i >= 0; i-- {
+			block := b.blocks[keys[i]]
+			if !block.yieldSetBitsBackward(keys[i], yield) {
+				return
+			}
+		}
+	}
+}
+
+
 // Block represents a single 65,536-bit partition.
 // It maintains a hybrid state: either uncompressed mutable (for fast transactional updates)
 // or compressed succinct (for compact storage and fast read lookups).
@@ -184,6 +231,107 @@ func (block *Block) Compress() bool {
 
 	return false
 }
+
+// yieldSetBits yields all set bits in the block in ascending order.
+func (block *Block) yieldSetBits(blockIdx uint32, yield func(uint64) bool) bool {
+	if block.mutable != nil {
+		for wordIdx, wVal := range block.mutable {
+			if wVal == 0 {
+				continue
+			}
+			w := wVal // Local copy, ensures non-destructive iteration
+			for w != 0 {
+				tz := bits.TrailingZeros64(w)
+				globalIdx := uint64(blockIdx)*65536 + uint64(wordIdx)*64 + uint64(tz)
+				if !yield(globalIdx) {
+					return false // Caller requested termination
+				}
+				w &= ^(uint64(1) << uint(tz)) // Clear lowest set bit in copy
+			}
+		}
+		return true
+	}
+
+	if block.succinct != nil {
+		var visit func(i uint32, begin uint64, length uint64) bool
+		visit = func(i uint32, begin uint64, length uint64) bool {
+			if !block.succinct.isInnerNode(i) {
+				if block.succinct.label(i) {
+					for k := uint64(0); k < length; k++ {
+						globalIdx := uint64(blockIdx)*65536 + begin + k
+						if !yield(globalIdx) {
+							return false
+						}
+					}
+				}
+				return true
+			}
+
+			leftChild := block.succinct.leftChild(i)
+			half := length / 2
+			if !visit(leftChild, begin, half) {
+				return false
+			}
+			return visit(leftChild+1, begin+half, half)
+		}
+		return visit(0, 0, 65536)
+	}
+
+	return true
+}
+
+// yieldSetBitsBackward yields all set bits in the block in descending order.
+func (block *Block) yieldSetBitsBackward(blockIdx uint32, yield func(uint64) bool) bool {
+	if block.mutable != nil {
+		for wordIdx := 1023; wordIdx >= 0; wordIdx-- {
+			wVal := block.mutable[wordIdx]
+			if wVal == 0 {
+				continue
+			}
+			w := wVal // Local copy, ensures non-destructive iteration
+			for w != 0 {
+				lz := bits.LeadingZeros64(w)
+				bitOffset := uint64(63 - lz)
+				globalIdx := uint64(blockIdx)*65536 + uint64(wordIdx)*64 + bitOffset
+				if !yield(globalIdx) {
+					return false
+				}
+				w &= ^(uint64(1) << bitOffset) // Clear highest set bit in copy
+			}
+		}
+		return true
+	}
+
+	if block.succinct != nil {
+		var visitRev func(i uint32, begin uint64, length uint64) bool
+		visitRev = func(i uint32, begin uint64, length uint64) bool {
+			if !block.succinct.isInnerNode(i) {
+				if block.succinct.label(i) {
+					// Yield in reverse order
+					for k := length; k > 0; k-- {
+						globalIdx := uint64(blockIdx)*65536 + begin + (k - 1)
+						if !yield(globalIdx) {
+							return false
+						}
+					}
+				}
+				return true
+			}
+
+			leftChild := block.succinct.leftChild(i)
+			half := length / 2
+			// Visit right child first in reverse
+			if !visitRev(leftChild+1, begin+half, half) {
+				return false
+			}
+			return visitRev(leftChild, begin, half)
+		}
+		return visitRev(0, 0, 65536)
+	}
+
+	return true
+}
+
 
 // SuccinctBlock represents the static, succinct level-order binary tree-encoded bitmap.
 type SuccinctBlock struct {
