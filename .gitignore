@@ -1,3 +1,6 @@
 # Ignore, this is https://db.in.tum.de/~lang/papers/tebs.pdf.
 tebs.pdf
 tebs.txt
+
+# Personal config.
+.envrc
