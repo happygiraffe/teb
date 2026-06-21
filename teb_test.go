@@ -2,8 +2,9 @@ package teb
 
 import (
 	"math/rand/v2"
-	"slices"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestBasicSetGet(t *testing.T) {
@@ -238,8 +239,8 @@ func TestForwardIterator(t *testing.T) {
 	for bit := range bm.All() {
 		collected = append(collected, bit)
 	}
-	if !slices.Equal(collected, setBits) {
-		t.Errorf("expected forward iterator to yield %v, got %v", setBits, collected)
+	if diff := cmp.Diff(setBits, collected); diff != "" {
+		t.Errorf("forward iterator mismatch (-want +got):\n%s", diff)
 	}
 
 	// 2. Test succinct state
@@ -248,8 +249,8 @@ func TestForwardIterator(t *testing.T) {
 	for bit := range bm.All() {
 		collected = append(collected, bit)
 	}
-	if !slices.Equal(collected, setBits) {
-		t.Errorf("expected succinct forward iterator to yield %v, got %v", setBits, collected)
+	if diff := cmp.Diff(setBits, collected); diff != "" {
+		t.Errorf("succinct forward iterator mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -270,8 +271,8 @@ func TestBackwardIterator(t *testing.T) {
 	for bit := range bm.AllReverse() {
 		collected = append(collected, bit)
 	}
-	if !slices.Equal(collected, expectedRev) {
-		t.Errorf("expected backward iterator to yield %v, got %v", expectedRev, collected)
+	if diff := cmp.Diff(expectedRev, collected); diff != "" {
+		t.Errorf("backward iterator mismatch (-want +got):\n%s", diff)
 	}
 
 	// 2. Test succinct state
@@ -280,8 +281,8 @@ func TestBackwardIterator(t *testing.T) {
 	for bit := range bm.AllReverse() {
 		collected = append(collected, bit)
 	}
-	if !slices.Equal(collected, expectedRev) {
-		t.Errorf("expected succinct backward iterator to yield %v, got %v", expectedRev, collected)
+	if diff := cmp.Diff(expectedRev, collected); diff != "" {
+		t.Errorf("succinct backward iterator mismatch (-want +got):\n%s", diff)
 	}
 }
 
