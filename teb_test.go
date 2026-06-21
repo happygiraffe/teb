@@ -2,6 +2,7 @@ package teb
 
 import (
 	"math/rand/v2"
+	"slices"
 	"testing"
 )
 
@@ -222,5 +223,197 @@ func BenchmarkCompressBlock(b *testing.B) {
 
 	for b.Loop() {
 		NewSuccinctBlock(mutable)
+	}
+}
+
+func TestForwardIterator(t *testing.T) {
+	bm := NewBitmap()
+	setBits := []uint64{5, 12, 100, 1023, 4096, 65000, 65536, 65536 + 10, 120000}
+	for _, bit := range setBits {
+		bm.Set(bit, true)
+	}
+
+	// 1. Test mutable state
+	var collected []uint64
+	for bit := range bm.All() {
+		collected = append(collected, bit)
+	}
+	if !slices.Equal(collected, setBits) {
+		t.Errorf("expected forward iterator to yield %v, got %v", setBits, collected)
+	}
+
+	// 2. Test succinct state
+	bm.Compress()
+	collected = nil
+	for bit := range bm.All() {
+		collected = append(collected, bit)
+	}
+	if !slices.Equal(collected, setBits) {
+		t.Errorf("expected succinct forward iterator to yield %v, got %v", setBits, collected)
+	}
+}
+
+func TestBackwardIterator(t *testing.T) {
+	bm := NewBitmap()
+	setBits := []uint64{5, 12, 100, 1023, 4096, 65000, 65536, 65536 + 10, 120000}
+	for _, bit := range setBits {
+		bm.Set(bit, true)
+	}
+
+	expectedRev := make([]uint64, len(setBits))
+	for i, v := range setBits {
+		expectedRev[len(setBits)-1-i] = v
+	}
+
+	// 1. Test mutable state
+	var collected []uint64
+	for bit := range bm.AllReverse() {
+		collected = append(collected, bit)
+	}
+	if !slices.Equal(collected, expectedRev) {
+		t.Errorf("expected backward iterator to yield %v, got %v", expectedRev, collected)
+	}
+
+	// 2. Test succinct state
+	bm.Compress()
+	collected = nil
+	for bit := range bm.AllReverse() {
+		collected = append(collected, bit)
+	}
+	if !slices.Equal(collected, expectedRev) {
+		t.Errorf("expected succinct backward iterator to yield %v, got %v", expectedRev, collected)
+	}
+}
+
+func TestIteratorBreak(t *testing.T) {
+	bm := NewBitmap()
+	for i := range uint64(100) {
+		bm.Set(i*100, true)
+	}
+
+	// Break after 5 elements in Forward
+	var count int
+	for bit := range bm.All() {
+		count++
+		if count == 5 {
+			_ = bit
+			break
+		}
+	}
+	if count != 5 {
+		t.Errorf("expected to yield exactly 5 elements before breaking, got %d", count)
+	}
+
+	// Compress and test break
+	bm.Compress()
+	count = 0
+	for bit := range bm.All() {
+		count++
+		if count == 5 {
+			_ = bit
+			break
+		}
+	}
+	if count != 5 {
+		t.Errorf("expected compressed to yield exactly 5 elements before breaking, got %d", count)
+	}
+
+	// Break after 5 elements in Reverse (mutable)
+	bm2 := NewBitmap()
+	for i := range uint64(100) {
+		bm2.Set(i*100, true)
+	}
+	count = 0
+	for bit := range bm2.AllReverse() {
+		count++
+		if count == 5 {
+			_ = bit
+			break
+		}
+	}
+	if count != 5 {
+		t.Errorf("expected reverse to yield exactly 5 elements before breaking, got %d", count)
+	}
+
+	// Break after 5 elements in Reverse (succinct)
+	bm2.Compress()
+	count = 0
+	for bit := range bm2.AllReverse() {
+		count++
+		if count == 5 {
+			_ = bit
+			break
+		}
+	}
+	if count != 5 {
+		t.Errorf("expected compressed reverse to yield exactly 5 elements before breaking, got %d", count)
+	}
+}
+
+func TestEmptyAndFullIterator(t *testing.T) {
+	// Empty bitmap
+	bmEmpty := NewBitmap()
+	for bit := range bmEmpty.All() {
+		t.Errorf("expected no elements from empty bitmap, got %d", bit)
+	}
+	for bit := range bmEmpty.AllReverse() {
+		t.Errorf("expected no elements from empty bitmap, got %d", bit)
+	}
+
+	// Full block bitmap (mutable)
+	bmFull := NewBitmap()
+	for i := range uint64(65536) {
+		bmFull.Set(i, true)
+	}
+	var count int
+	for range bmFull.All() {
+		count++
+	}
+	if count != 65536 {
+		t.Errorf("expected 65536 elements, got %d", count)
+	}
+
+	// Full block bitmap (succinct)
+	bmFull.Compress()
+	count = 0
+	for range bmFull.All() {
+		count++
+	}
+	if count != 65536 {
+		t.Errorf("expected 65536 elements in succinct, got %d", count)
+	}
+}
+
+func BenchmarkIteratorForward(b *testing.B) {
+	bm := NewBitmap()
+	// Set 5% density
+	for range 50000 {
+		idx := rand.N[uint64](1000000)
+		bm.Set(idx, true)
+	}
+	bm.Compress()
+
+	b.ResetTimer()
+	for b.Loop() {
+		for bit := range bm.All() {
+			_ = bit
+		}
+	}
+}
+
+func BenchmarkIteratorBackward(b *testing.B) {
+	bm := NewBitmap()
+	// Set 5% density
+	for range 50000 {
+		idx := rand.N[uint64](1000000)
+		bm.Set(idx, true)
+	}
+	bm.Compress()
+
+	b.ResetTimer()
+	for b.Loop() {
+		for bit := range bm.AllReverse() {
+			_ = bit
+		}
 	}
 }
